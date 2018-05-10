@@ -1,0 +1,21 @@
+[[override]]
+  name = "github.com/spotahome/kooper"
+  branch = "master"
+
+[[override]]
+  name = "k8s.io/api"
+  version = "kubernetes-1.10.0"
+
+[[override]]
+  name = "k8s.io/apimachinery"
+  version = "kubernetes-1.10.0"
+
+[[override]]
+  name = "k8s.io/client-go"
+  source = "https://github.com/Nikkau/client-go.git"
+  branch = "v7-namespace"
+  #version = "7.0.0"
+
+[prune]
+  go-tests = true
+  unused-packages = true
