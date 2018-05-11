@@ -79,19 +79,6 @@ func (sc *ServiceController) Run(stopC chan struct{}) error {
 		},
 	}
 
-	// // Leader election service.
-	// lesvc, err := leaderelection.NewDefault(leaderElectionKey, sc.namespace, sc.kubeCli, sc.logger)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// Create the controller and run.
-	// cfg := &controller.Config{
-	// 	ProcessingJobRetries: 5,
-	// 	ResyncInterval:       time.Duration(30) * time.Second,
-	// 	ConcurrentWorkers:    1,
-	// }
-
 	// Create metrics endpoint
 	metricsRecorder := createPrometheusRecorder(sc.logger, sc.namespace)
 
