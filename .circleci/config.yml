@@ -1,0 +1,31 @@
+# Golang CircleCI 2.0 configuration file
+#
+# Check https://circleci.com/docs/2.0/language-go/ for more details
+version: 2
+jobs:
+  build:
+    docker:
+      # specify the version
+      - image: circleci/golang:1.9
+      
+    working_directory: /go/src/github.com/barpilot/knetblackmon
+    steps:
+      - checkout
+
+      - run: go get -u github.com/golang/dep/cmd/dep
+      - run: dep ensure -v
+      - save_cache:
+          key: vendor-cache-{{ .Branch }}-{{ checksum "Gopkg.lock" }}
+          paths:
+            - vendor
+      - save_cache:
+          key: vendor-cache-{{ .Branch }}
+          paths:
+            - vendor
+      - save_cache:
+          key: vendor-cache
+          paths:
+            - vendor
+
+      # specify any bash command here prefixed with `run: `
+      - run: go test -race -cover -v $(go list ./... | grep -v /vendor/)
