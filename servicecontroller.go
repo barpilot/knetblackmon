@@ -25,13 +25,11 @@ type ServiceController struct {
 	namespace string
 
 	endpointsScrapers map[string]*EndpointScraper
-	stopChannels      map[string]chan struct{}
 }
 
 func NewServiceController(kubeCli kubernetes.Interface, namespace string, logger log.Logger) *ServiceController {
-	stopC := make(map[string]chan struct{})
 	es := make(map[string]*EndpointScraper)
-	return &ServiceController{kubeCli: kubeCli, namespace: namespace, logger: logger, stopChannels: stopC, endpointsScrapers: es}
+	return &ServiceController{kubeCli: kubeCli, namespace: namespace, logger: logger, endpointsScrapers: es}
 }
 
 func (sc *ServiceController) Run(stopC chan struct{}) error {
@@ -58,14 +56,13 @@ func (sc *ServiceController) Run(stopC chan struct{}) error {
 			srv := obj.(*corev1.Service)
 			if val, ok := sc.endpointsScrapers[srv.Name]; ok {
 				if val.Service != srv {
-					close(sc.stopChannels[srv.Name])
+					val.Stop()
 				} else {
 					return nil
 				}
 			}
-			sc.stopChannels[srv.Name] = make(chan struct{})
 			sc.endpointsScrapers[srv.Name] = NewEndpointScraper(sc.kubeCli, sc.namespace, srv, sc.logger)
-			go sc.endpointsScrapers[srv.Name].Run(sc.stopChannels[srv.Name])
+			go sc.endpointsScrapers[srv.Name].Run()
 
 			sc.logger.Infof("Srv added: %s/%s", srv.Namespace, srv.Name)
 			return nil
@@ -74,9 +71,9 @@ func (sc *ServiceController) Run(stopC chan struct{}) error {
 			svc := strings.Split(s, "/")
 			namespace := svc[0]
 			name := svc[1]
-			if c, ok := sc.stopChannels[name]; ok && sc.endpointsScrapers[name].Service.Namespace == namespace {
-				close(c)
-				sc.endpointsScrapers[s] = nil
+			if v, ok := sc.endpointsScrapers[name]; ok && v.Service.Namespace == namespace {
+				v.Stop()
+				delete(sc.endpointsScrapers, name)
 			}
 			sc.logger.Infof("Service deleted: %s", s)
 			return nil

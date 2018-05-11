@@ -25,13 +25,15 @@ type EndpointScraper struct {
 	Service   *corev1.Service
 	endpoints corev1.Endpoints
 	urls      []string
+	stopC     chan struct{}
 }
 
 func NewEndpointScraper(kubeCli kubernetes.Interface, namespace string, srv *corev1.Service, logger log.Logger) *EndpointScraper {
-	return &EndpointScraper{kubeCli: kubeCli, namespace: namespace, Service: srv, logger: logger}
+	stopC := make(chan struct{})
+	return &EndpointScraper{kubeCli: kubeCli, namespace: namespace, Service: srv, logger: logger, stopC: stopC}
 }
 
-func (eps *EndpointScraper) Run(stopC chan struct{}) {
+func (eps *EndpointScraper) Run() {
 	//eps.kubeCli.CoreV1().Endpoints(eps.namespace).Get(eps.service.Name, metav1.GetOptions{})
 
 	retr := &retrieve.Resource{
@@ -66,12 +68,16 @@ func (eps *EndpointScraper) Run(stopC chan struct{}) {
 	// Create the controller that will refresh every 30 seconds.
 	ctrl := controller.NewSequential(30*time.Second, hand, retr, nil, eps.logger)
 
-	go ctrl.Run(stopC)
+	go ctrl.Run(eps.stopC)
 
-	go eps.RunScrapper(stopC)
+	go eps.RunScrapper(eps.stopC)
 
 	//eps.refreshEndpoints()
 	//return eps
+}
+
+func (eps *EndpointScraper) Stop() {
+	close(eps.stopC)
 }
 
 //&Endpoints{Subsets:[{[{172.17.0.4 } {172.17.0.5 }] [] [{4567 4567 TCP}]}],}
