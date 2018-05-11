@@ -40,9 +40,7 @@ func (p *ServiceKiller) Start() error {
 
 func (p *ServiceKiller) run() error {
 	for {
-		select {
-		case <-time.After(time.Duration(periodSeconds) * time.Second):
-			p.logger.Infof("tick")
-		}
+		<-time.After(time.Duration(periodSeconds) * time.Second)
+		p.logger.Infof("tick")
 	}
 }
