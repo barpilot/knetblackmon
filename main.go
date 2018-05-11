@@ -18,11 +18,6 @@ import (
 	"github.com/spotahome/kooper/log"
 )
 
-const (
-	leaderElectionKey        = "leader-election-example-controller"
-	resyncIntervalSecondsDef = 30
-)
-
 // Main runs the main application.
 func Main() error {
 	// Initialize logger.

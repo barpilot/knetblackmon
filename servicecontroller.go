@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -15,7 +14,6 @@ import (
 
 	"github.com/spotahome/kooper/log"
 	"github.com/spotahome/kooper/operator/controller"
-	"github.com/spotahome/kooper/operator/controller/leaderelection"
 	"github.com/spotahome/kooper/operator/handler"
 	"github.com/spotahome/kooper/operator/retrieve"
 )
@@ -60,37 +58,44 @@ func (sc *ServiceController) Run(stopC chan struct{}) error {
 				close(sc.stopC)
 				sc.stopC = make(chan struct{})
 				sc.endpointScraper = NewEndpointScraper(sc.kubeCli, sc.namespace, srv, sc.logger)
-				sc.endpointScraper.Run(sc.stopC)
+				go sc.endpointScraper.Run(sc.stopC)
+				go func() {
+					select {
+					default:
+						NewServiceKiller(sc.kubeCli, sc.namespace, srv, sc.logger).Start()
+					case <-stopC:
+						return
+					}
+				}()
 			}
 
 			sc.logger.Infof("Srv added: %s/%s", srv.Namespace, srv.Name)
 			return nil
 		},
 		DeleteFunc: func(s string) error {
-			sc.logger.Infof("Pod deleted: %s", s)
+			close(sc.stopC)
+			sc.logger.Infof("Service deleted: %s", s)
 			return nil
 		},
 	}
 
-	// Leader election service.
-	lesvc, err := leaderelection.NewDefault(leaderElectionKey, sc.namespace, sc.kubeCli, sc.logger)
-	if err != nil {
-		return err
-	}
+	// // Leader election service.
+	// lesvc, err := leaderelection.NewDefault(leaderElectionKey, sc.namespace, sc.kubeCli, sc.logger)
+	// if err != nil {
+	// 	return err
+	// }
 
 	// Create the controller and run.
-	cfg := &controller.Config{
-		ProcessingJobRetries: 5,
-		ResyncInterval:       time.Duration(30) * time.Second,
-		ConcurrentWorkers:    1,
-	}
+	// cfg := &controller.Config{
+	// 	ProcessingJobRetries: 5,
+	// 	ResyncInterval:       time.Duration(30) * time.Second,
+	// 	ConcurrentWorkers:    1,
+	// }
 
 	// Create metrics endpoint
 	metricsRecorder := createPrometheusRecorder(sc.logger, sc.namespace)
-	if err != nil {
-		return fmt.Errorf("errors getting metrics backend: %s", err)
-	}
 
-	controller.New(cfg, servicesHand, servicesRetr, lesvc, metricsRecorder, sc.logger).Run(stopC)
+	controller.NewSequential(30*time.Second, servicesHand, servicesRetr, metricsRecorder, sc.logger).Run(stopC)
+
 	return nil
 }
