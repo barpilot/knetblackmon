@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -23,13 +24,14 @@ type ServiceController struct {
 	logger    log.Logger
 	namespace string
 
-	endpointScraper *EndpointScraper
-	stopC           chan struct{}
+	endpointsScrapers map[string]*EndpointScraper
+	stopChannels      map[string]chan struct{}
 }
 
 func NewServiceController(kubeCli kubernetes.Interface, namespace string, logger log.Logger) *ServiceController {
-	stopC := make(chan struct{})
-	return &ServiceController{kubeCli: kubeCli, namespace: namespace, logger: logger, stopC: stopC}
+	stopC := make(map[string]chan struct{})
+	es := make(map[string]*EndpointScraper)
+	return &ServiceController{kubeCli: kubeCli, namespace: namespace, logger: logger, stopChannels: stopC, endpointsScrapers: es}
 }
 
 func (sc *ServiceController) Run(stopC chan struct{}) error {
@@ -54,26 +56,28 @@ func (sc *ServiceController) Run(stopC chan struct{}) error {
 	servicesHand := &handler.HandlerFunc{
 		AddFunc: func(obj runtime.Object) error {
 			srv := obj.(*corev1.Service)
-			if sc.endpointScraper == nil || sc.endpointScraper.Service != srv {
-				close(sc.stopC)
-				sc.stopC = make(chan struct{})
-				sc.endpointScraper = NewEndpointScraper(sc.kubeCli, sc.namespace, srv, sc.logger)
-				go sc.endpointScraper.Run(sc.stopC)
-				go func() {
-					select {
-					default:
-						NewServiceKiller(sc.kubeCli, sc.namespace, srv, sc.logger).Start()
-					case <-stopC:
-						return
-					}
-				}()
+			if val, ok := sc.endpointsScrapers[srv.Name]; ok {
+				if val.Service != srv {
+					close(sc.stopChannels[srv.Name])
+				} else {
+					return nil
+				}
 			}
+			sc.stopChannels[srv.Name] = make(chan struct{})
+			sc.endpointsScrapers[srv.Name] = NewEndpointScraper(sc.kubeCli, sc.namespace, srv, sc.logger)
+			go sc.endpointsScrapers[srv.Name].Run(sc.stopChannels[srv.Name])
 
 			sc.logger.Infof("Srv added: %s/%s", srv.Namespace, srv.Name)
 			return nil
 		},
 		DeleteFunc: func(s string) error {
-			close(sc.stopC)
+			svc := strings.Split(s, "/")
+			namespace := svc[0]
+			name := svc[1]
+			if c, ok := sc.stopChannels[name]; ok && sc.endpointsScrapers[name].Service.Namespace == namespace {
+				close(c)
+				sc.endpointsScrapers[s] = nil
+			}
 			sc.logger.Infof("Service deleted: %s", s)
 			return nil
 		},
