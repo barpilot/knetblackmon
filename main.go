@@ -18,11 +18,6 @@ import (
 	"github.com/spotahome/kooper/log"
 )
 
-const (
-	leaderElectionKey        = "leader-election-example-controller"
-	resyncIntervalSecondsDef = 30
-)
-
 // Main runs the main application.
 func Main() error {
 	// Initialize logger.
@@ -43,12 +38,14 @@ func Main() error {
 		return fmt.Errorf("error creating kubernetes client: %s", err)
 	}
 
-	sc := NewServiceController(k8scli, namespace.Namespace(), logger)
-
 	stopC := make(chan struct{})
 	errC := make(chan error)
 	go func() {
-		errC <- sc.Run(stopC)
+		errC <- NewServiceKiller(k8scli, namespace.Namespace(), logger).Start()
+	}()
+
+	go func() {
+		errC <- NewServiceController(k8scli, namespace.Namespace(), logger).Run(stopC)
 	}()
 
 	sigC := make(chan os.Signal, 1)
